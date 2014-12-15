@@ -2,6 +2,7 @@ package com.travelover.traveljournal.service;
 
 import java.io.IOException;
 import java.net.URL;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +17,9 @@ import com.couchbase.lite.android.AndroidContext;
 import com.couchbase.lite.auth.Authenticator;
 import com.couchbase.lite.auth.BasicAuthenticator;
 import com.couchbase.lite.replicator.Replication;
+import com.travelover.traveljournal.exceptions.CreateJournalFailedException;
+import com.travelover.traveljournal.exceptions.DeleteJournalFailedException;
+import com.travelover.traveljournal.exceptions.JournalNotExistedException;
 
 import android.app.Activity;
 import android.util.Log;
@@ -44,23 +48,25 @@ public class CouchbaseService {
 			journalsDB = manager.getDatabase(JOURNAL_DB_NAME);
 
 			URL url = new URL("http://120.24.225.199:4984/journals/");
-			Replication push = journalsDB.createPushReplication(url);
-			Replication pull = journalsDB.createPullReplication(url);
-			pull.setContinuous(true);
-			push.setContinuous(true);
+			journalsDBPush = journalsDB.createPushReplication(url);
+			journalsDBPull = journalsDB.createPullReplication(url);
+			
+			journalsDBPull.setContinuous(true);
+			journalsDBPush.setContinuous(true);
+			
 			Authenticator auth = new BasicAuthenticator("test001", "111111");
-			push.setAuthenticator(auth);
-			pull.setAuthenticator(auth);
+			journalsDBPush.setAuthenticator(auth);
+			journalsDBPull.setAuthenticator(auth);
 
-			push.addChangeListener(new Replication.ChangeListener() {
+			journalsDBPush.addChangeListener(new Replication.ChangeListener() {
 				@Override
 				public void changed(Replication.ChangeEvent event) {
-					// will be called back when the push replication status
+					// will be called back when the journalsDBPush replication status
 					// changes
 					Log.d(TAG, "change count:" + event.getChangeCount());
 				}
 			});
-			pull.addChangeListener(new Replication.ChangeListener() {
+			journalsDBPull.addChangeListener(new Replication.ChangeListener() {
 				@Override
 				public void changed(Replication.ChangeEvent event) {
 					// will be called back when the pull replication status
@@ -68,10 +74,9 @@ public class CouchbaseService {
 					Log.d(TAG, "change count:" + event.getChangeCount());
 				}
 			});
-			push.start();
-			pull.start();
-			journalsDBPush = push;
-			journalsDBPull = pull;
+			
+			journalsDBPush.start();
+			journalsDBPull.start();
 
 		} catch (IOException e) {
 			Log.e(TAG, "Cannot create manager object");
@@ -82,24 +87,36 @@ public class CouchbaseService {
 		}
 	}
 
-	public String createJournal() {
-		Document document = this.journalsDB.getDocument(this.journalName);
-		Log.d(TAG, "create journal:" + document.getId());
-		return document.getId();
+	public void createJournal() throws CreateJournalFailedException {
+		Document journal;
+		try {
+			journal = this.journalsDB.getDocument(this.journalName);
+			Map<String, Object> updatedProperties = new HashMap<String, Object>();
+			updatedProperties.put("username", "test001");
+			updatedProperties.put("createTime", new Timestamp(System.currentTimeMillis()));
+			journal.putProperties(updatedProperties);
+			Log.d(TAG, "create journal:" + journal.getId());
+		} catch (CouchbaseLiteException e) {
+			e.printStackTrace();
+			throw new CreateJournalFailedException();
+		}
 	}
 
-	public void recordNode() {
+	public void recordNode() throws JournalNotExistedException {
 
 		Document journal = this.journalsDB.getDocument(this.journalName);
 
-		if (journal == null) {
+		if (journal == null || journal.isDeleted()) {
 			Log.e(TAG, "can not find journal:" + this.journalName);
-			return;
+			throw new JournalNotExistedException();
 		}
 
 		// update the document
 		Map<String, Object> updatedProperties = new HashMap<String, Object>();
-		updatedProperties.putAll(journal.getProperties());
+		Map<String, Object> orignalProperties = journal.getProperties();
+		if( orignalProperties!=null ){
+			updatedProperties.putAll(orignalProperties);
+		}
 
 		@SuppressWarnings("unchecked")
 		List<String> locationList = (List<String>) updatedProperties
@@ -118,6 +135,28 @@ public class CouchbaseService {
 		} catch (CouchbaseLiteException e) {
 			Log.e(TAG, "Cannot update document", e);
 		}
+	}
+	
+	public void deleteJournal() throws DeleteJournalFailedException, JournalNotExistedException {
+		try {
+			Document journal = this.journalsDB.getDocument(this.journalName);
+			
+			if(journal==null){
+				throw new JournalNotExistedException();
+			}
+			
+			
+			if(journal.isDeleted()){
+				throw new JournalNotExistedException();
+			}
+			
+			Log.d(TAG, "delete journal:" + journal.getId());
+			journal.delete();
+		
+		} catch (CouchbaseLiteException e) {
+			throw new DeleteJournalFailedException();
+		}
+		return;
 	}
 
 	public Manager getManager() {
