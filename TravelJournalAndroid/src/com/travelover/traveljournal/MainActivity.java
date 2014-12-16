@@ -1,10 +1,7 @@
 package com.travelover.traveljournal;
 
-import com.travelover.traveljournal.exceptions.CreateJournalFailedException;
-import com.travelover.traveljournal.exceptions.DeleteJournalFailedException;
-import com.travelover.traveljournal.exceptions.JournalNotExistedException;
-import com.travelover.traveljournal.service.CouchbaseService;
-import com.travelover.traveljournal.util.AlertUtils;
+import com.travelover.traveljournal.service.ServiceDelegate;
+import com.travelover.traveljournal.util.ErrorCodeUtils;
 import com.travelover.traveljournalandroid.R;
 
 import android.app.Activity;
@@ -15,27 +12,23 @@ import android.widget.Button;
 
 public class MainActivity extends Activity{
 	
-	private CouchbaseService couchbaseService;
-	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		
-		couchbaseService=new CouchbaseService(this);
-		
 		setContentView(R.layout.mainview);
+		
+		ServiceDelegate.init();
+		ServiceDelegate.getCouchbaseService().init(this);
 		
 		/*创建旅行日志*/
 		Button createJournal = (Button) findViewById(R.id.createJournal);
 		createJournal.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				couchbaseService.setJournalName("journal1");
-				try {
-					couchbaseService.createJournal();
-				} catch (CreateJournalFailedException e) {
-					AlertUtils.alert("create journal failed!", v.getContext());
-				}
+				ServiceDelegate.getCouchbaseService().setJournalName("journal1");
+					int code=ServiceDelegate.getCouchbaseService().createJournal();
+					ErrorCodeUtils.alertErrorMessage(code, v.getContext());
 			}
 		});
 		
@@ -44,11 +37,8 @@ public class MainActivity extends Activity{
 		recordJournalNode.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				try {
-					couchbaseService.recordNode();
-				} catch (JournalNotExistedException e) {
-					AlertUtils.alert("journal not found!", v.getContext());
-				}
+					int code=ServiceDelegate.getCouchbaseService().recordNode();
+					ErrorCodeUtils.alertErrorMessage(code, v.getContext());
 			}
 		});
 		
@@ -56,13 +46,9 @@ public class MainActivity extends Activity{
 		deleteJournal.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				try {
-					couchbaseService.deleteJournal();
-				} catch ( DeleteJournalFailedException e) {
-		            AlertUtils.alert("delete journal failed!", v.getContext());
-				} catch (JournalNotExistedException e) {
-					 AlertUtils.alert("journal not found!", v.getContext());
-				}
+					
+					int code = ServiceDelegate.getCouchbaseService().deleteJournal();
+					ErrorCodeUtils.alertErrorMessage(code, v.getContext());
 			}
 		});
 	}

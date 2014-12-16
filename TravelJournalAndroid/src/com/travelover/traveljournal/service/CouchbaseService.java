@@ -1,6 +1,7 @@
 package com.travelover.traveljournal.service;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -17,9 +18,7 @@ import com.couchbase.lite.android.AndroidContext;
 import com.couchbase.lite.auth.Authenticator;
 import com.couchbase.lite.auth.BasicAuthenticator;
 import com.couchbase.lite.replicator.Replication;
-import com.travelover.traveljournal.exceptions.CreateJournalFailedException;
-import com.travelover.traveljournal.exceptions.DeleteJournalFailedException;
-import com.travelover.traveljournal.exceptions.JournalNotExistedException;
+import com.travelover.traveljournal.util.ErrorCodeUtils;
 
 import android.app.Activity;
 import android.util.Log;
@@ -33,88 +32,114 @@ public class CouchbaseService {
 	private Replication journalsDBPush;
 	private Replication journalsDBPull;
 	private final String TAG = "CouchbaseService";
-	
+
 	private String journalName;
 
-	public CouchbaseService(Activity activity) {
-		try {
+	public int init(Activity activity) {
 
-			/* 创建数据库管理对象 */
+		int code = ErrorCodeUtils.SUCCESS;
+
+		/* 创建数据库管理对象 */
+		try {
 			manager = new Manager((Context) new AndroidContext(activity),
 					Manager.DEFAULT_OPTIONS);
-			Log.d(TAG, "Manager created!");
-
-			/* 检查创建数据库对象 */
-			journalsDB = manager.getDatabase(JOURNAL_DB_NAME);
-
-			URL url = new URL("http://120.24.225.199:4984/journals/");
-			journalsDBPush = journalsDB.createPushReplication(url);
-			journalsDBPull = journalsDB.createPullReplication(url);
-			
-			journalsDBPull.setContinuous(true);
-			journalsDBPush.setContinuous(true);
-			
-			Authenticator auth = new BasicAuthenticator("test001", "111111");
-			journalsDBPush.setAuthenticator(auth);
-			journalsDBPull.setAuthenticator(auth);
-
-			journalsDBPush.addChangeListener(new Replication.ChangeListener() {
-				@Override
-				public void changed(Replication.ChangeEvent event) {
-					// will be called back when the journalsDBPush replication status
-					// changes
-					Log.d(TAG, "change count:" + event.getChangeCount());
-				}
-			});
-			journalsDBPull.addChangeListener(new Replication.ChangeListener() {
-				@Override
-				public void changed(Replication.ChangeEvent event) {
-					// will be called back when the pull replication status
-					// changes
-					Log.d(TAG, "change count:" + event.getChangeCount());
-				}
-			});
-			
-			journalsDBPush.start();
-			journalsDBPull.start();
-
 		} catch (IOException e) {
-			Log.e(TAG, "Cannot create manager object");
-			throw new RuntimeException();
-		} catch (CouchbaseLiteException e) {
-			Log.e(TAG, "Cannot create manager object");
-			throw new RuntimeException();
+			Log.e(TAG, "error:"
+					+ ErrorCodeUtils.CREATE_COUCHBASE_MANAGER_FAILED);
+			code = ErrorCodeUtils.CREATE_COUCHBASE_MANAGER_FAILED;
 		}
+		Log.d(TAG, "Manager created!");
+
+		/* 检查创建数据库对象 */
+		try {
+			journalsDB = manager.getDatabase(JOURNAL_DB_NAME);
+		} catch (CouchbaseLiteException e) {
+			Log.e(TAG, "error:" + ErrorCodeUtils.CREATE_JOURNAL_DATABASE_FAILED);
+			code = ErrorCodeUtils.CREATE_JOURNAL_DATABASE_FAILED;
+		}
+
+		URL url = null;
+		try {
+			url = new URL("http://120.24.225.199:4984/journals/");
+		} catch (MalformedURLException e) {
+			Log.e(TAG, "error:" + ErrorCodeUtils.URL_FORMATE_ERROR);
+			code = ErrorCodeUtils.URL_FORMATE_ERROR;
+		}
+
+		journalsDBPush = journalsDB.createPushReplication(url);
+		journalsDBPull = journalsDB.createPullReplication(url);
+
+		journalsDBPull.setContinuous(true);
+		journalsDBPush.setContinuous(true);
+
+		Authenticator auth = new BasicAuthenticator("test001", "111111");
+		journalsDBPush.setAuthenticator(auth);
+		journalsDBPull.setAuthenticator(auth);
+
+		journalsDBPush.addChangeListener(new Replication.ChangeListener() {
+			@Override
+			public void changed(Replication.ChangeEvent event) {
+				// will be called back when the journalsDBPush replication
+				// status
+				// changes
+				Log.d(TAG, "change count:" + event.getChangeCount());
+			}
+		});
+		journalsDBPull.addChangeListener(new Replication.ChangeListener() {
+			@Override
+			public void changed(Replication.ChangeEvent event) {
+				// will be called back when the pull replication status
+				// changes
+				Log.d(TAG, "change count:" + event.getChangeCount());
+			}
+		});
+
+		journalsDBPush.start();
+		journalsDBPull.start();
+
+		return code;
+
 	}
 
-	public void createJournal() throws CreateJournalFailedException {
-		Document journal;
+	public int createJournal() {
+
+		int code = ErrorCodeUtils.SUCCESS;
+
 		try {
-			journal = this.journalsDB.getDocument(this.journalName);
+			Document journal = this.journalsDB.getDocument(this.journalName);
+
 			Map<String, Object> updatedProperties = new HashMap<String, Object>();
 			updatedProperties.put("username", "test001");
-			updatedProperties.put("createTime", new Timestamp(System.currentTimeMillis()));
+			updatedProperties.put("createTime",
+					new Timestamp(System.currentTimeMillis()));
 			journal.putProperties(updatedProperties);
+
 			Log.d(TAG, "create journal:" + journal.getId());
 		} catch (CouchbaseLiteException e) {
-			e.printStackTrace();
-			throw new CreateJournalFailedException();
+			Log.e(TAG, "error:" + ErrorCodeUtils.CREATE_JOURNAL_FAILED);
+			code = ErrorCodeUtils.CREATE_JOURNAL_FAILED;
 		}
+
+		return code;
 	}
 
-	public void recordNode() throws JournalNotExistedException {
+	public int recordNode() {
 
-		Document journal = this.journalsDB.getDocument(this.journalName);
+		int code = ErrorCodeUtils.SUCCESS;
+
+		Document journal = this.journalsDB
+				.getExistingDocument(this.journalName);
 
 		if (journal == null || journal.isDeleted()) {
-			Log.e(TAG, "can not find journal:" + this.journalName);
-			throw new JournalNotExistedException();
+			Log.e(TAG, "error:" + ErrorCodeUtils.JOURNAL_NOT_EXISTED);
+			code = ErrorCodeUtils.JOURNAL_NOT_EXISTED;
+			return code;
 		}
 
 		// update the document
 		Map<String, Object> updatedProperties = new HashMap<String, Object>();
 		Map<String, Object> orignalProperties = journal.getProperties();
-		if( orignalProperties!=null ){
+		if (orignalProperties != null) {
 			updatedProperties.putAll(orignalProperties);
 		}
 
@@ -133,30 +158,36 @@ public class CouchbaseService {
 					"updated retrievedDocument="
 							+ String.valueOf(journal.getProperties()));
 		} catch (CouchbaseLiteException e) {
-			Log.e(TAG, "Cannot update document", e);
+			Log.e(TAG, "error:" + ErrorCodeUtils.CREATE_JOURNAL_NODE_FAILED);
+			code = ErrorCodeUtils.CREATE_JOURNAL_NODE_FAILED;
 		}
+
+		return code;
 	}
-	
-	public void deleteJournal() throws DeleteJournalFailedException, JournalNotExistedException {
+
+	public int deleteJournal() {
+
+		int code = ErrorCodeUtils.SUCCESS;
+
 		try {
-			Document journal = this.journalsDB.getDocument(this.journalName);
-			
-			if(journal==null){
-				throw new JournalNotExistedException();
+			Document journal = this.journalsDB
+					.getExistingDocument(this.journalName);
+
+			if (journal == null || journal.isDeleted()) {
+				Log.e(TAG, "error:" + ErrorCodeUtils.JOURNAL_NOT_EXISTED);
+				code = ErrorCodeUtils.JOURNAL_NOT_EXISTED;
+				return code;
 			}
-			
-			
-			if(journal.isDeleted()){
-				throw new JournalNotExistedException();
-			}
-			
+
 			Log.d(TAG, "delete journal:" + journal.getId());
 			journal.delete();
-		
+
 		} catch (CouchbaseLiteException e) {
-			throw new DeleteJournalFailedException();
+			Log.e(TAG, "error:" + ErrorCodeUtils.DELETE_JOURNAL_FAILED);
+			code = ErrorCodeUtils.DELETE_JOURNAL_FAILED;
 		}
-		return;
+
+		return code;
 	}
 
 	public Manager getManager() {
