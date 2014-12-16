@@ -18,9 +18,10 @@ import com.couchbase.lite.android.AndroidContext;
 import com.couchbase.lite.auth.Authenticator;
 import com.couchbase.lite.auth.BasicAuthenticator;
 import com.couchbase.lite.replicator.Replication;
+import com.travelover.traveljournal.model.Node;
 import com.travelover.traveljournal.util.ErrorCodeUtils;
 
-import android.app.Activity;
+import android.location.Location;
 import android.util.Log;
 
 public class CouchbaseService {
@@ -35,13 +36,12 @@ public class CouchbaseService {
 
 	private String journalName;
 
-	public int init(Activity activity) {
+	public int init(android.content.Context context) {
 
 		int code = ErrorCodeUtils.SUCCESS;
 
-		/* 创建数据库管理对象 */
 		try {
-			manager = new Manager((Context) new AndroidContext(activity),
+			manager = new Manager((Context) new AndroidContext(context),
 					Manager.DEFAULT_OPTIONS);
 		} catch (IOException e) {
 			Log.e(TAG, "error:"
@@ -50,7 +50,6 @@ public class CouchbaseService {
 		}
 		Log.d(TAG, "Manager created!");
 
-		/* 检查创建数据库对象 */
 		try {
 			journalsDB = manager.getDatabase(JOURNAL_DB_NAME);
 		} catch (CouchbaseLiteException e) {
@@ -123,7 +122,7 @@ public class CouchbaseService {
 		return code;
 	}
 
-	public int recordNode() {
+	public int recordNode(Location location) {
 
 		int code = ErrorCodeUtils.SUCCESS;
 
@@ -144,25 +143,44 @@ public class CouchbaseService {
 		}
 
 		@SuppressWarnings("unchecked")
-		List<String> locationList = (List<String>) updatedProperties
-				.get("locationlist");
-		if (locationList == null) {
-			locationList = new ArrayList<String>();
+		List<Node> nodeList = (List<Node>) updatedProperties.get("nodes");
+		if (nodeList == null) {
+			nodeList = new ArrayList<Node>();
 		}
-		locationList.add(String.valueOf(System.currentTimeMillis()));
-		updatedProperties.put("locationlist", locationList);
+
+		Node node = new Node();
+		node.setLangtitude(location.getLongitude());
+		node.setLatitude(location.getLatitude());
+		node.setAltitude(location.getAltitude());
+		node.setTime(location.getTime());
+
+		nodeList.add(node);
+		updatedProperties.put("nodes", nodeList);
 
 		try {
 			journal.putProperties(updatedProperties);
 			Log.d(TAG,
 					"updated retrievedDocument="
-							+ String.valueOf(journal.getProperties()));
+							+ String.valueOf(journal.getCurrentRevision()));
 		} catch (CouchbaseLiteException e) {
 			Log.e(TAG, "error:" + ErrorCodeUtils.CREATE_JOURNAL_NODE_FAILED);
 			code = ErrorCodeUtils.CREATE_JOURNAL_NODE_FAILED;
 		}
 
 		return code;
+	}
+
+	public Document  findJournal(String journalName) {
+
+		Document journal = this.journalsDB
+				.getExistingDocument(this.journalName);
+
+		if (journal == null || journal.isDeleted()) {
+			Log.e(TAG, "error:" + ErrorCodeUtils.JOURNAL_NOT_EXISTED);
+			return null;
+		}
+
+		return journal;
 	}
 
 	public int deleteJournal() {
