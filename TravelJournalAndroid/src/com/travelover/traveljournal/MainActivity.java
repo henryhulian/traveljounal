@@ -6,6 +6,7 @@ import com.travelover.traveljournal.util.ErrorCodeUtils;
 import com.travelover.traveljournalandroid.R;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
 import android.view.View;
@@ -62,6 +63,15 @@ public class MainActivity extends Activity{
 					TextView journalView = (TextView) findViewById(R.id.journalview);
 					journalView.setMovementMethod(new ScrollingMovementMethod());
 					journalView.setText(journalFound.getProperties().toString());
+			}
+		});
+		
+		Button openmap = (Button) findViewById(R.id.openmap);
+		openmap.setOnClickListener(new OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				    
+					startActivity(new Intent(v.getContext(), SencondActivity.class));
 			}
 		});
 	}
